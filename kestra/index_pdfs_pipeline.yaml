@@ -38,13 +38,13 @@ tasks:
   #Trigger dbt Cloud to Build Final Indexed Model
   - id: trigger-dbt-cloud
     type: io.kestra.plugin.dbt.cloud.RunJob
-    accountId: "your-dbt-cloud-account-id"
-    jobId: "your-dbt-job-id"
-    token: "your-dbt-cloud-api-token"
+    accountId: "70471823434549"
+    jobId: "70471823434549"
+    token: "dbtc_LMYwP_IPGB-U3SyKM_hVOkTBvJSDJ2b_QZ-C2xfmvwfVpqVs0o"
 
   #Wait for dbt Job to Complete
   - id: check-dbt-status
     type: io.kestra.plugin.dbt.cloud.WaitForRun
-    accountId: "your-dbt-cloud-account-id"
+    accountId: "70471823434549"
     runId: "{{ outputs.trigger-dbt-cloud.runId }}"
-    token: "your-dbt-cloud-api-token"
+    token: "dbtc_LMYwP_IPGB-U3SyKM_hVOkTBvJSDJ2b_QZ-C2xfmvwfVpqVs0o"

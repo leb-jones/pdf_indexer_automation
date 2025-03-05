@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: indexed_pdfs
+    description: "Final table containing indexed words, books, and page numbers."
+    columns:
+      - name: WordID
+        description: "Unique identifier for words."
+      - name: Word
+        description: "Indexed word."
+      - name: BookID
+        description: "Unique identifier for books."
+      - name: Book
+        description: "Book file where the word appears."
+      - name: PageNumber
+        description: "Page number where the word appears."
