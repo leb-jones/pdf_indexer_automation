@@ -1,0 +1,50 @@
+id: index-pdfs-pipeline
+namespace: indexing
+
+tasks:
+  #Run Terraform 
+  - id: setup-infra
+    type: io.kestra.plugin.scripts.terraform.Commands
+    directory: /home/lebjones/PDFIndexer/terraform
+    commands:
+      - terraform init
+      - terraform apply -auto-approve
+
+  #pload PDFs to GCS
+  - id: upload-pdfs
+    type: io.kestra.plugin.gcp.gcs.Upload
+    bucket: indexing-pdf-storage
+    from: /home/lebjones/Media/Books/
+    to: pdfs/
+    move: false
+
+  #Run Indexer Script on Dataproc
+  - id: run-dataproc-job
+    type: io.kestra.plugin.scripts.bash.Commands
+    commands:
+      - gcloud dataproc jobs submit pyspark gs://indexing-pdf-storage/scripts/indexer.py \
+          --cluster=pdf-indexing-cluster \
+          --region=us-central1 \
+          --jars gs://hadoop-lib/gcs/gcs-connector-hadoop3-latest.jar \
+          --properties google.cloud.auth.service.account.json.keyfile=/home/lebjones/PDFIndexer/keys/bigquery.json \
+          --py-files gs://indexing-pdf-storage/scripts/requirements.txt
+
+  #Delete GCS Bucket After Processing
+  - id: delete-bucket
+    type: io.kestra.plugin.scripts.bash.Commands
+    commands:
+      - gcloud storage rm --recursive gs://indexing-pdf-storage/
+
+  #Trigger dbt Cloud to Build Final Indexed Model
+  - id: trigger-dbt-cloud
+    type: io.kestra.plugin.dbt.cloud.RunJob
+    accountId: "your-dbt-cloud-account-id"
+    jobId: "your-dbt-job-id"
+    token: "your-dbt-cloud-api-token"
+
+  #Wait for dbt Job to Complete
+  - id: check-dbt-status
+    type: io.kestra.plugin.dbt.cloud.WaitForRun
+    accountId: "your-dbt-cloud-account-id"
+    runId: "{{ outputs.trigger-dbt-cloud.runId }}"
+    token: "your-dbt-cloud-api-token"
