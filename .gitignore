@@ -1,0 +1,49 @@
+#Ignore all credential files
+keys/*.json
+*.key
+*.pem
+*.p12
+
+#Ignore Terraform state & logs
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/crash.log
+
+#Ignore Python cache & virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+env/
+
+#Ignore compiled files & logs
+*.log
+*.out
+*.err
+nohup.out
+
+#Ignore local PDFs (only keep in GCS)
+pdfs/
+
+#Ignore dbt compiled & target directories
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/manifest.json
+dbt/run_results.json
+
+#Ignore Kestra logs & caches
+kestra_workflows/.kestra-cache/
+kestra_workflows/logs/
+
+#Ignore Cloud Function Deployments
+*.zip
+.cloudfunction/
+
+#Ignore GCP service account temp files
+*.boto
+.gcloudignore
+config.json

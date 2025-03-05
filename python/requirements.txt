@@ -1,0 +1,5 @@
+pymupdf==1.22.5           # PDF text extraction
+google-cloud-storage==2.10.0   # GCS client for reading PDFs
+google-cloud-bigquery==3.11.0  # BigQuery client for inserting data
+pandas==2.1.1              # Data processing
+nltk==3.8.1                # Natural language processing (stopwords, lemmatization)
