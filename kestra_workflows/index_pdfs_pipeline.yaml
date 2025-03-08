@@ -2,23 +2,15 @@ id: index-pdfs-pipeline
 namespace: indexing
 
 tasks:
-  #Run Terraform 
-  - id: setup-infra
-    type: io.kestra.plugin.scripts.terraform.Commands
-    directory: /home/lebjones/PDFIndexer/terraform
-    commands:
-      - terraform init
-      - terraform apply -auto-approve
-
-  #pload PDFs to GCS
+  # 🔹 Upload PDFs to Existing GCS Bucket
   - id: upload-pdfs
     type: io.kestra.plugin.gcp.gcs.Upload
     bucket: indexing-pdf-storage
-    from: /home/lebjones/Media/Books/
+    from: /home/lebjones/PDFIndexer/pdfs/
     to: pdfs/
     move: false
 
-  #Run Indexer Script on Dataproc
+  # 🔹 Run the Indexing Script in Dataproc
   - id: run-dataproc-job
     type: io.kestra.plugin.scripts.bash.Commands
     commands:
@@ -26,25 +18,30 @@ tasks:
           --cluster=pdf-indexing-cluster \
           --region=us-central1 \
           --jars gs://hadoop-lib/gcs/gcs-connector-hadoop3-latest.jar \
-          --properties google.cloud.auth.service.account.json.keyfile=/home/lebjones/PDFIndexer/keys/bigquery.json \
-          --py-files gs://indexing-pdf-storage/scripts/requirements.txt
+          --properties google.cloud.auth.service.account.json.keyfile=$DATAPROC_KEY_PATH
 
-  #Delete GCS Bucket After Processing
-  - id: delete-bucket
-    type: io.kestra.plugin.scripts.bash.Commands
-    commands:
-      - gcloud storage rm --recursive gs://indexing-pdf-storage/
-
-  #Trigger dbt Cloud to Build Final Indexed Model
+  # 🔹 Trigger dbt Cloud Transformation (No Duplication of Table Creation)
   - id: trigger-dbt-cloud
     type: io.kestra.plugin.dbt.cloud.RunJob
-    accountId: "70471823434549"
-    jobId: "70471823434549"
-    token: "dbtc_LMYwP_IPGB-U3SyKM_hVOkTBvJSDJ2b_QZ-C2xfmvwfVpqVs0o"
+    accountId: "your-dbt-cloud-account-id"
+    jobId: "your-dbt-job-id"
+    token: "your-dbt-cloud-api-token"
 
-  #Wait for dbt Job to Complete
+  # 🔹 Wait for dbt Cloud to Finish
   - id: check-dbt-status
     type: io.kestra.plugin.dbt.cloud.WaitForRun
-    accountId: "70471823434549"
+    accountId: "your-dbt-cloud-account-id"
     runId: "{{ outputs.trigger-dbt-cloud.runId }}"
-    token: "dbtc_LMYwP_IPGB-U3SyKM_hVOkTBvJSDJ2b_QZ-C2xfmvwfVpqVs0o"
+    token: "your-dbt-cloud-api-token"
+
+  # 🔹 Cleanup GCS Bucket (Remove PDFs After Processing)
+  - id: cleanup-gcs
+    type: io.kestra.plugin.scripts.bash.Commands
+    commands:
+      - gcloud storage rm --recursive gs://indexing-pdf-storage/pdfs/
+
+  # 🔹 (Optional) Delete Dataproc Cluster After Job Completion
+  - id: delete-dataproc-cluster
+    type: io.kestra.plugin.scripts.bash.Commands
+    commands:
+      - gcloud dataproc clusters delete pdf-indexing-cluster --region=us-central1 --quiet
