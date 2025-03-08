@@ -1,0 +1,56 @@
+version: "3.8"
+
+services:
+  kestra:
+    build: .
+    container_name: kestra_server
+    ports:
+      - "8080:8080"
+    volumes:
+      - /home/lebjones/PDFIndexer/kestra_workflows:/app/kestra_workflows
+      - /home/lebjones/PDFIndexer/terraform:/app/terraform
+    environment:
+      GCS_KEY_PATH: "/run/secrets/gcs_key"
+      BIGQUERY_KEY_PATH: "/run/secrets/bigquery_key"
+      DATAPROC_KEY_PATH: "/run/secrets/dataproc_key"
+      GOOGLE_APPLICATION_CREDENTIALS: "/run/secrets/bigquery_key"
+    secrets:
+      - gcs_key
+      - bigquery_key
+      - dataproc_key
+    command: ["server"]
+
+  terraform:
+    image: hashicorp/terraform:latest
+    container_name: terraform_runner
+    volumes:
+      - /home/lebjones/PDFIndexer/terraform:/app/terraform
+    environment:
+      GCS_KEY_PATH: "/run/secrets/gcs_key"
+      DATAPROC_KEY_PATH: "/run/secrets/dataproc_key"
+    secrets:
+      - gcs_key
+      - dataproc_key
+    working_dir: /app/terraform
+    command: ["terraform", "apply", "-auto-approve"]
+
+  dbt:
+    image: fishtownanalytics/dbt:latest
+    container_name: dbt_runner
+    volumes:
+      - /home/lebjones/PDFIndexer/dbt:/app/dbt
+    environment:
+      BIGQUERY_KEY_PATH: "/run/secrets/bigquery_key"
+      GOOGLE_APPLICATION_CREDENTIALS: "/run/secrets/bigquery_key"
+    secrets:
+      - bigquery_key
+    working_dir: /app/dbt
+    command: ["run"]
+
+secrets:
+  gcs_key:
+    file: /home/lebjones/PDFIndexer/keys/bucket.json
+  bigquery_key:
+    file: /home/lebjones/PDFIndexer/keys/bigquery.json
+  dataproc_key:
+    file: /home/lebjones/PDFIndexer/keys/dataproc.json
