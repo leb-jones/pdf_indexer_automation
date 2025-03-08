@@ -1,6 +1,6 @@
 provider "google" {
   credentials = file("/home/lebjones/PDFIndexer/keys/dataproc.json")
-  project     = "your-gcp-project-id"
+  project     = "books-450100"
   region      = "us-central1"
 }
 
@@ -46,7 +46,7 @@ resource "google_dataproc_cluster" "pdf_indexing_cluster" {
 # 🔹 Create BigQuery Dataset (Only If It Doesn't Exist)
 resource "google_bigquery_dataset" "indexing_dataset" {
   dataset_id = "indexing_dataset"
-  project    = "your-gcp-project-id"
+  project    = "books-450100"
   location   = "US"
   description = "Dataset for storing indexed words, books, and references from PDFs."
 }
