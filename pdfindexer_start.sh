@@ -5,14 +5,9 @@ KEYS_DIR="/home/lebjones/PDFIndexer/keys"
 TF_DIR="/home/lebjones/PDFIndexer/terraform"
 
 # Set environment variables
-export GOOGLE_APPLICATION_CREDENTIALS_BUCKET="$KEYS_DIR/bucket.json"
-export GOOGLE_APPLICATION_CREDENTIALS_DATAPROC="$KEYS_DIR/dataproc.json"
-export GOOGLE_APPLICATION_CREDENTIALS_BIGQUERY="$KEYS_DIR/bigquery.json"
-
-# Print variables for verification
-echo "GOOGLE_APPLICATION_CREDENTIALS_BUCKET=$GOOGLE_APPLICATION_CREDENTIALS_BUCKET"
-echo "GOOGLE_APPLICATION_CREDENTIALS_DATAPROC=$GOOGLE_APPLICATION_CREDENTIALS_DATAPROC"
-echo "GOOGLE_APPLICATION_CREDENTIALS_BIGQUERY=$GOOGLE_APPLICATION_CREDENTIALS_BIGQUERY"
+export TF_VAR_google_credentials_bucket="/home/lebjones/PDFIndexer/keys/bucket.json"
+export TF_VAR_google_credentials_dataproc="/home/lebjones/PDFIndexer/keys/dataproc.json"
+export TF_VAR_google_credentials_bigquery="/home/lebjones/PDFIndexer/keys/bigquery.json"
 
 # Change to Terraform directory
 cd $TF_DIR
