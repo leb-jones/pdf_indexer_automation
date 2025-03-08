@@ -1,5 +1,9 @@
+variable "google_credentials_bucket" {}
+variable "google_credentials_dataproc" {}
+variable "google_credentials_bigquery" {}
+
 provider "google" {
-  credentials = file("/home/lebjones/PDFIndexer/keys/dataproc.json")
+  credentials = file(var.google_credentials_bucket)
   project     = "books-450100"
   region      = "us-central1"
 }
