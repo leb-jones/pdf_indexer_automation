@@ -35,7 +35,7 @@ resource "google_dataproc_cluster" "pdf_indexing_cluster" {
     }
 
     gce_cluster_config {
-      service_account = "your-dataproc-service-account@your-gcp-project-id.iam.gserviceaccount.com"
+      service_account = "indexer-dataproc@books-450100.iam.gserviceaccount.com"
       service_account_scopes = [
         "https://www.googleapis.com/auth/cloud-platform"
       ]
