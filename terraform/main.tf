@@ -39,7 +39,7 @@ resource "google_dataproc_cluster" "pdf_indexing_cluster" {
     }
 
     gce_cluster_config {
-      service_account = "indexer-dataproc@books-450100.iam.gserviceaccount.com"
+      service_account = "indexer-bucket@books-450100.iam.gserviceaccount.com"
       service_account_scopes = [
         "https://www.googleapis.com/auth/cloud-platform"
       ]
@@ -90,46 +90,40 @@ resource "google_bigquery_table" "index_fact" {
 EOF
 }
 
-# 🔹 Create Compute Engine VM for Kestra
-resource "google_compute_instance" "kestra_vm" {
-  name         = "kestra-server"
-  machine_type = "e2-standard-2"
-  zone         = "us-central1-a"
-
-  boot_disk {
-    initialize_params {
-      image = "cos-cloud/cos-stable"
-    }
+# 🔹 Start Kestra in Docker Locally
+resource "null_resource" "start_kestra" {
+  provisioner "local-exec" {
+    command = <<EOT
+      docker run -d --name kestra_server \
+        -p 8080:8080 \
+        -e GOOGLE_APPLICATION_CREDENTIALS=${var.google_credentials_path} \
+        -v ${var.kestra_repo_path}:/app/repo \
+        kestra/kestra:latest
+    EOT
   }
-
-  network_interface {
-    network = "default"
-    access_config {}
-  }
-
-  metadata_startup_script = <<-EOT
-    #!/bin/bash
-    sudo apt-get update
-    sudo apt-get install -y docker.io
-    sudo systemctl start docker
-    sudo systemctl enable docker
-
-    # Pull and Run Kestra Container
-    docker run -d -p 8080:8080 --name kestra_server \
-      -e GOOGLE_APPLICATION_CREDENTIALS=/app/keys/bigquery.json \
-      -v /home/lebjones/PDFIndexer/keys:/app/keys \
-      -v /home/lebjones/PDFIndexer/kestra_workflows:/app/kestra_workflows \
-      kestra/kestra:latest
-
-    # Wait for Kestra to start
-    sleep 30
-
-    # Run Kestra workflow to start indexing
-    docker exec kestra_server kestra workflow run indexing.index-pdfs-pipeline
-  EOT
 }
 
-# 🔹 Output the VM's external IP
-output "kestra_vm_ip" {
-  value = google_compute_instance.kestra_vm.network_interface.0.access_config.0.nat_ip
+# 🔹 Wait for Kestra to Start
+resource "null_resource" "wait_for_kestra" {
+  provisioner "local-exec" {
+    command = "sleep 10"
+  }
+
+  depends_on = [null_resource.start_kestra]
+}
+
+# 🔹 Kick Off the Kestra Workflow
+resource "null_resource" "run_kestra_workflow" {
+  provisioner "local-exec" {
+    command = <<EOT
+      curl -X POST "http://localhost:8080/api/v1/executions/${var.kestra_workflow_namespace}/${var.kestra_workflow_id}" \
+        -H "Content-Type: application/json"
+    EOT
+  }
+
+  depends_on = [null_resource.wait_for_kestra]
+}
+
+output "kestra_url" {
+  value = "http://localhost:8080/"
 }
