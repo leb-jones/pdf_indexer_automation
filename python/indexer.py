@@ -1,93 +1,183 @@
-import fitz  # PyMuPDF
 import os
-import string
-import pandas as pd
-import nltk
-from google.cloud import bigquery, storage
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
+from google.cloud import storage, bigquery
+import fitz  # PyMuPDF for PDF processing
+import spacy
 
-# Google Cloud configurations
-BQ_CREDENTIALS_PATH = "/home/lebjones/PDFIndexer/keys/bigquery.json"
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = BQ_CREDENTIALS_PATH
+# Load NLP Model
+nlp = spacy.load("en_core_web_sm")
 
-BQ_PROJECT_ID = "your-gcp-project-id"
-BQ_DATASET = "indexing_dataset"
-BQ_TABLE_DIM_WORD = "dim_word"
-BQ_TABLE_DIM_BOOK = "dim_book"
-BQ_TABLE_FACT_INDEX = "index_fact"
-GCS_BUCKET = "indexing-pdf-storage"
-
+# Set up Google Cloud clients
 storage_client = storage.Client()
-bq_client = bigquery.Client(project=BQ_PROJECT_ID)
+bigquery_client = bigquery.Client()
 
-nltk.download("stopwords")
-nltk.download("wordnet")
+# Get bucket name from environment variable
+BUCKET_NAME = os.getenv("PDF_BUCKET_NAME", "your-default-bucket")
 
-STOPWORDS = set(stopwords.words("english"))
-STOPWORDS.update({"page", "document", "pdf", "figure", "table"})
+# BigQuery Dataset & Table Names
+BQ_DATASET = "indexing_dataset"
+DIM_BOOK_TABLE = f"{BQ_DATASET}.dim_book"
+DIM_WORD_TABLE = f"{BQ_DATASET}.dim_word"
+FACT_INDEX_TABLE = f"{BQ_DATASET}.fact_index"
 
-lemmatizer = WordNetLemmatizer()
+def list_pdfs():
+    """List all PDF files in the bucket."""
+    bucket = storage_client.bucket(BUCKET_NAME)
+    return [blob.name for blob in bucket.list_blobs() if blob.name.endswith(".pdf")]
 
-def normalize_word(word):
-    word = word.strip(string.punctuation).lower()
-    hyphen_variants = {word, word.replace("-", ""), word.replace("-", " ")}
-    cleaned_words = {lemmatizer.lemmatize(w) for w in hyphen_variants if w and w.isalpha() and w not in STOPWORDS}
-    return cleaned_words if cleaned_words else None
+def download_pdf(file_name):
+    """Download a PDF from the GCS bucket to Cloud Run's /tmp directory."""
+    bucket = storage_client.bucket(BUCKET_NAME)
+    blob = bucket.blob(file_name)
 
-def extract_text_from_gcs(bucket_name):
-    word_set = set()
-    book_set = set()
-    fact_data = []
+    local_path = f"/tmp/{os.path.basename(file_name)}"  # Ensure filename-only path
+    blob.download_to_filename(local_path)
+    
+    print(f"Downloaded {file_name} to {local_path}")
+    return local_path
 
-    bucket = storage_client.bucket(bucket_name)
-    blobs = bucket.list_blobs(prefix="pdfs/")
+def extract_text(pdf_path):
+    """Extract text from a PDF file."""
+    text_data = {}
+    with fitz.open(pdf_path) as doc:
+        for page_num, page in enumerate(doc):
+            text_data[page_num + 1] = page.get_text()
+    return text_data
 
-    for blob in blobs:
-        if blob.name.endswith(".pdf"):
-            book_set.add(blob.name)
-            pdf_data = blob.download_as_bytes()
-            doc = fitz.open(stream=pdf_data, filetype="pdf")
+def process_text(text_data):
+    """Extract keywords from text using Spacy NLP."""
+    keywords = {}
+    for page, text in text_data.items():
+        doc = nlp(text)
+        words = {token.text.lower() for token in doc if token.is_alpha and not token.is_stop}
+        keywords[page] = words
+    return keywords
 
-            for page_num in range(len(doc)):
-                text = doc[page_num].get_text("text")
-                words = set()
-                for word in text.split():
-                    normalized_words = normalize_word(word)
-                    if normalized_words:
-                        words.update(normalized_words)
-                
-                for word in words:
-                    word_set.add(word)
-                    fact_data.append((word, blob.name, page_num + 1))
+def insert_into_bigquery(file_name, keywords):
+    """Insert book and word data into BigQuery."""
+    book_id = insert_book_record(file_name)
+    for page, words in keywords.items():
+        for word in words:
+            word_id = insert_word_record(word)
+            insert_fact_index(book_id, word_id, page)
 
-    return word_set, book_set, fact_data
+from google.cloud import bigquery
 
-def build_star_schema(word_set, book_set, fact_data):
-    dim_word = pd.DataFrame({"Word": sorted(word_set)})
-    dim_word["WordID"] = range(1, len(dim_word) + 1)
+def insert_book_record(book_name):
+    print(f"Inserting book record for: {book_name}")
+    bigquery_client = bigquery.Client()
 
-    dim_book = pd.DataFrame({"Book": sorted(book_set)})
-    dim_book["BookID"] = range(1, len(dim_book) + 1)
+    # Escape single quotes to prevent SQL injection issues
+    escaped_book_name = book_name.replace("'", "''")
 
-    word_dict = dict(zip(dim_word["Word"], dim_word["WordID"]))
-    book_dict = dict(zip(dim_book["Book"], dim_book["BookID"]))
+    # Generate a new BookID by finding MAX(BookID) + 1
+    get_max_id_query = f"""
+    SELECT COALESCE(MAX(BookID), 0) + 1 AS new_id FROM `{DIM_BOOK_TABLE}`
+    """
 
-    fact_table = pd.DataFrame(fact_data, columns=["Word", "Book", "PageNumber"])
-    fact_table["WordID"] = fact_table["Word"].map(word_dict)
-    fact_table["BookID"] = fact_table["Book"].map(book_dict)
-    fact_table = fact_table[["WordID", "BookID", "PageNumber"]]
+    try:
+        # Execute query to get the next available BookID
+        result = bigquery_client.query(get_max_id_query).result()
+        new_book_id = None
+        for row in result:
+            new_book_id = row.new_id
+        if new_book_id is None:
+            print("Error: Failed to generate new BookID")
+            return None
 
-    insert_into_bigquery(dim_word, BQ_TABLE_DIM_WORD)
-    insert_into_bigquery(dim_book, BQ_TABLE_DIM_BOOK)
-    insert_into_bigquery(fact_table, BQ_TABLE_FACT_INDEX)
+        # Insert new book with the generated BookID
+        insert_query = f"""
+        INSERT INTO `{DIM_BOOK_TABLE}` (BookID, BookName)
+        VALUES (@book_id, @book_name)
+        """
 
-def insert_into_bigquery(df, table_name):
-    table_id = f"{BQ_PROJECT_ID}.{BQ_DATASET}.{table_name}"
-    job_config = bigquery.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
-    job = bq_client.load_table_from_dataframe(df, table_id, job_config=job_config)
-    job.result()
+        query_params = [
+            bigquery.ScalarQueryParameter("book_id", "INT64", new_book_id),
+            bigquery.ScalarQueryParameter("book_name", "STRING", escaped_book_name)
+        ]
+
+        job_config = bigquery.QueryJobConfig(query_parameters=query_params)
+        bigquery_client.query(insert_query, job_config=job_config).result()
+
+        print(f"Inserted BookID {new_book_id} for '{book_name}'")
+        return new_book_id
+
+    except Exception as e:
+        print(f"Error inserting book: {e}")
+        return None
+
+def insert_word_record(word):
+    print(f"Inserting word record for: {word}")
+    bigquery_client = bigquery.Client()
+
+    # Escape single quotes to prevent SQL injection issues
+    escaped_word = word.replace("'", "''")
+
+    # Generate a new WordID by finding MAX(WordID) + 1
+    get_max_id_query = f"""
+    SELECT COALESCE(MAX(WordID), 0) + 1 AS new_id FROM `{DIM_WORD_TABLE}`
+    """
+
+    try:
+        # Execute query to get the next available WordID
+        result = bigquery_client.query(get_max_id_query).result()
+        new_word_id = None
+        for row in result:
+            new_word_id = row.new_id
+        if new_word_id is None:
+            print("Error: Failed to generate new WordID")
+            return None
+
+        # Insert new word with the generated WordID
+        insert_query = f"""
+        INSERT INTO `{DIM_WORD_TABLE}` (WordID, Word)
+        VALUES (@word_id, @word)
+        """
+
+        query_params = [
+            bigquery.ScalarQueryParameter("word_id", "INT64", new_word_id),
+            bigquery.ScalarQueryParameter("word", "STRING", escaped_word)
+        ]
+
+        job_config = bigquery.QueryJobConfig(query_parameters=query_params)
+        bigquery_client.query(insert_query, job_config=job_config).result()
+
+        print(f"Inserted WordID {new_word_id} for '{word}'")
+        return new_word_id
+
+    except Exception as e:
+        print(f"Error inserting word: {e}")
+        return None
+
+def insert_fact_index(book_id, word_id, page):
+    """Insert data into the fact_index table."""
+    query = f"""
+        INSERT INTO `{FACT_INDEX_TABLE}` (WordID, BookID, PageNumber)
+        VALUES (@word_id, @book_id, @page);
+    """
+    bigquery_client.query(query, job_config=bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("word_id", "INT64", word_id),
+            bigquery.ScalarQueryParameter("book_id", "INT64", book_id),
+            bigquery.ScalarQueryParameter("page", "INT64", page),
+        ]
+    ))
+
+# Flask or FastAPI Endpoint to Trigger Processing
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/process_pdfs")
+def process_pdfs():
+    """Trigger the process to index all PDFs from GCS."""
+    pdf_files = list_pdfs()
+    for pdf in pdf_files:
+        local_path = download_pdf(pdf)
+        text_data = extract_text(local_path)
+        keywords = process_text(text_data)
+        insert_into_bigquery(pdf, keywords)
+    return {"message": f"Processed {len(pdf_files)} PDFs successfully."}
 
 if __name__ == "__main__":
-    word_set, book_set, fact_data = extract_text_from_gcs(GCS_BUCKET)
-    build_star_schema(word_set, book_set, fact_data)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)
