@@ -1,56 +1,66 @@
-version: "3.8"
+volumes:
+  postgres-data:
+    driver: local
+  kestra-data:
+    driver: local
 
 services:
+
+  postgres:
+    image: postgres:15
+    container_name: kestra-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: kestra
+      POSTGRES_PASSWORD: kestra
+      POSTGRES_DB: kestra
+    ports:
+      - "5432:5432"
+    volumes:
+      - /home/lebjones/postgres_data:/var/lib/postgresql/data
   kestra:
-    build: .
-    container_name: kestra_server
+    image: kestra/kestra:v0.20.7
+    container_name: kestra
+    pull_policy: always
+    user: "root"
+    command: server standalone
+    volumes:
+      - kestra-data:/app/storage
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/kestra-wd:/tmp/kestra-wd
+      - /home/lebjones/Media/Books:/app/host_books
+      - /home/lebjones/PDFIndexer/kestra/flows/:/app/flows/
+      - /home/lebjones/PDFIndexer/python/indexer.py:/app/scripts/indexer.py
+      - /home/lebjones/PDFIndexer/keys/storage.json:/app/keys/storage.json
+    environment:
+      KESTRA_CONFIGURATION: |
+        datasources:
+          postgres:
+            url: jdbc:postgresql://postgres:5432/kestra
+            driverClassName: org.postgresql.Driver
+            username: kestra
+            password: kestra
+        kestra:
+          server:
+            basicAuth:
+              enabled: false
+              username: "admin@kestra.io" # it must be a valid email address
+              password: kestra
+          repository:
+            type: postgres
+          storage:
+            type: local
+            local:
+              basePath: "/app/storage"
+          queue:
+            type: postgres
+          tasks:
+            tmpDir:
+              path: /tmp/kestra-wd/tmp
+          url: http://localhost:8080/
     ports:
       - "8080:8080"
-    volumes:
-      - /home/lebjones/PDFIndexer/kestra_workflows:/app/kestra_workflows
-      - /home/lebjones/PDFIndexer/terraform:/app/terraform
-    environment:
-      GCS_KEY_PATH: "/run/secrets/gcs_key"
-      BIGQUERY_KEY_PATH: "/run/secrets/bigquery_key"
-      DATAPROC_KEY_PATH: "/run/secrets/dataproc_key"
-      GOOGLE_APPLICATION_CREDENTIALS: "/run/secrets/bigquery_key"
-    secrets:
-      - gcs_key
-      - bigquery_key
-      - dataproc_key
-    command: ["server"]
-
-  terraform:
-    image: hashicorp/terraform:latest
-    container_name: terraform_runner
-    volumes:
-      - /home/lebjones/PDFIndexer/terraform:/app/terraform
-    environment:
-      GCS_KEY_PATH: "/run/secrets/gcs_key"
-      DATAPROC_KEY_PATH: "/run/secrets/dataproc_key"
-    secrets:
-      - gcs_key
-      - dataproc_key
-    working_dir: /app/terraform
-    command: ["terraform", "apply", "-auto-approve"]
-
-  dbt:
-    image: fishtownanalytics/dbt:latest
-    container_name: dbt_runner
-    volumes:
-      - /home/lebjones/PDFIndexer/dbt:/app/dbt
-    environment:
-      BIGQUERY_KEY_PATH: "/run/secrets/bigquery_key"
-      GOOGLE_APPLICATION_CREDENTIALS: "/run/secrets/bigquery_key"
-    secrets:
-      - bigquery_key
-    working_dir: /app/dbt
-    command: ["run"]
-
-secrets:
-  gcs_key:
-    file: /home/lebjones/PDFIndexer/keys/bucket.json
-  bigquery_key:
-    file: /home/lebjones/PDFIndexer/keys/bigquery.json
-  dataproc_key:
-    file: /home/lebjones/PDFIndexer/keys/dataproc.json
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_started

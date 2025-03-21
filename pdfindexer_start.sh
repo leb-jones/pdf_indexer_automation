@@ -1,39 +1,62 @@
 #!/bin/bash
 
-# Define GCP Project ID
-PROJECT_ID="books-450100"
+# Exit script on any error
+set -e
 
-# Ensure the correct project is set for gcloud commands
-gcloud config set project $PROJECT_ID
+# Define base directory
+BASE_DIR="/home/lebjones/PDFIndexer"
+SHARED_DIR="$BASE_DIR/shared"
+KESTRA_READY_FILE="$SHARED_DIR/kestra_ready.log"
+KESTRA_URL="http://localhost:8080"
+FLOW_NAMESPACE="indexing"
+FLOW_ID="index-pdfspipeline"
 
-# Define the directory where the keys are stored
-KEYS_DIR="/home/lebjones/PDFIndexer/keys"
-TF_DIR="/home/lebjones/PDFIndexer/terraform"
+# Define environment variables for Terraform
+export TF_VAR_DIR="$BASE_DIR"
+export TF_VAR_GOOGLE_CREDENTIALS_BUCKET="$BASE_DIR/keys/storage.json"
+export TF_VAR_GOOGLE_CREDENTIALS_PATH="$BASE_DIR/keys/storage.json"
+export TF_VAR_KESTRA_REPO_PATH="$BASE_DIR/kestra_workflows"
+export TF_VAR_TERRAFORM="$BASE_DIR/terraform"
+export TF_VAR_PYTHON_SCRIPT_PATH="$BASE_DIR/python"
+export GOOGLE_APPLICATION_CREDENTIALS=$TF_VAR_GOOGLE_CREDENTIALS_PATH
 
-# Set environment variables for Terraform credentials
-export TF_VAR_google_credentials_bucket="$KEYS_DIR/bucket.json"
-export TF_VAR_google_credentials_dataproc="$KEYS_DIR/dataproc.json"
-export TF_VAR_google_credentials_bigquery="$KEYS_DIR/bigquery.json"
-export TF_VAR_kestra_repo_path="/home/lebjones/PDFIndexer"
-export TF_VAR_google_credentials_path="/app/repo/keys/bigquery.json"
-
-# Print variables for verification
-echo "GCP Project: $PROJECT_ID"
-echo "GOOGLE_APPLICATION_CREDENTIALS_BUCKET=$TF_VAR_google_credentials_bucket"
-echo "GOOGLE_APPLICATION_CREDENTIALS_DATAPROC=$TF_VAR_google_credentials_dataproc"
-echo "GOOGLE_APPLICATION_CREDENTIALS_BIGQUERY=$TF_VAR_google_credentials_bigquery"
+# Ensure Terraform directory exists
+if [ ! -d "$TF_VAR_TERRAFORM" ]; then
+  echo "ERROR: Terraform directory not found: $TF_VAR_TERRAFORM"
+  exit 1
+fi
 
 # Change to Terraform directory
-cd $TF_DIR
+cd "$TF_VAR_TERRAFORM"
 
-# Initialize Terraform
-terraform init
+## Initialize and apply Terraform
+#echo "Initializing Terraform..."
+#terraform init
+#terraform apply -auto-approve
 
-# Apply Terraform configuration (automated, no prompts)
-terraform apply -auto-approve
+# Extract the GCS bucket name dynamically
+BUCKET_NAME=$(terraform output -raw pdf_bucket_name)
 
-# Wait for Kestra to start (since Terraform is running it)
-sleep 10
+# Check if bucket name was retrieved
+if [ "$BUCKET_NAME" = "ERROR" ] || [ -z "$BUCKET_NAME" ]; then
+  echo "ERROR: Failed to get bucket name from Terraform!"
+  exit 1
+fi
 
-# Check Kestra logs
-docker logs -f kestra_server
+echo $BUCKET_NAME
+
+export PDF_BUCKET_NAME=$BUCKET_NAME
+
+source /home/lebjones/PDFIndexer/.venv/bin/activate
+
+cd /home/lebjones/PDFIndexer/python
+
+pip install -r requirements.txt
+
+python -m spacy download en_core_web_sm
+
+python load_pdfs.py
+
+python indexer.py
+
+deactivate

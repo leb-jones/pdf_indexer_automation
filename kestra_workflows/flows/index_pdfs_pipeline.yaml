@@ -1,0 +1,33 @@
+id: index-pdfs-pipeline
+namespace: indexing
+
+tasks:
+  - id: find-pdfs
+    type: io.kestra.core.tasks.scripts.Bash
+    description: "Find all PDFs inside the mounted folder in Kestra container."
+    commands:
+      - "find /app/host_books -type f -name '*.pdf' > pdf_files.txt"
+
+  - id: upload-to-gcs
+    type: io.kestra.plugin.gcp.gcs.Upload
+    description: "Upload all found PDFs to the Google Cloud Storage bucket"
+    from: "{{ workingDir }}/pdf_files.txt"
+    bucket: "{{ inputs.pdf_bucket_name }}"
+    destination: "pdfs/"
+    recursive: true
+    authentication:
+      serviceAccount: "{{ env.GOOGLE_APPLICATION_CREDENTIALS }}"
+
+  - id: run-python-script
+    type: io.kestra.core.tasks.scripts.DockerScript
+    container: python:3.9
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: "/app/keys/storage.json"
+    script: |
+      import os
+      print("Starting indexer script...")
+
+      # Ensure the script runs correctly
+      os.system("python /app/scripts/indexer.py")
+
+      print("Indexer script completed.")
