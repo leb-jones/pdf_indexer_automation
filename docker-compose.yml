@@ -5,33 +5,30 @@ volumes:
     driver: local
 
 services:
-
   postgres:
     image: postgres:15
-    container_name: kestra-postgres
-    restart: always
+    container_name: postgres
     environment:
+      POSTGRES_DB: kestra
       POSTGRES_USER: kestra
       POSTGRES_PASSWORD: kestra
-      POSTGRES_DB: kestra
     ports:
       - "5432:5432"
-    volumes:
-      - /home/lebjones/postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kestra"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   kestra:
-    image: kestra/kestra:v0.20.7
+    build: .
     container_name: kestra
-    pull_policy: always
-    user: "root"
-    command: server standalone
-    volumes:
-      - kestra-data:/app/storage
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /tmp/kestra-wd:/tmp/kestra-wd
-      - /home/lebjones/Media/Books:/app/host_books
-      - /home/lebjones/PDFIndexer/kestra/flows/:/app/flows/
-      - /home/lebjones/PDFIndexer/python/indexer.py:/app/scripts/indexer.py
-      - /home/lebjones/PDFIndexer/keys/storage.json:/app/keys/storage.json
+    depends_on:
+      postgres:
+        condition: service_started
+    command: server standalone --config /app/config/application.yml
+    ports:
+      - "8080:8080"
     environment:
       KESTRA_CONFIGURATION: |
         datasources:
@@ -58,9 +55,12 @@ services:
             tmpDir:
               path: /tmp/kestra-wd/tmp
           url: http://localhost:8080/
-    ports:
-      - "8080:8080"
-      - "8081:8081"
-    depends_on:
-      postgres:
-        condition: service_started
+    volumes:
+      - kestra-data:/app/storage
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/kestra-wd:/tmp/kestra-wd
+      - /home/lebjones/PDFIndexer/kestra/application.yml:/app/config/application.yml
+      - /home/lebjones/PDFIndexer:/app/pdfindexer
+    env_file:
+      - .env
+

@@ -1,62 +1,35 @@
 #!/bin/bash
 
-# Exit script on any error
 set -e
+set -o pipefail
 
-# Define base directory
-BASE_DIR="/home/lebjones/PDFIndexer"
-SHARED_DIR="$BASE_DIR/shared"
-KESTRA_READY_FILE="$SHARED_DIR/kestra_ready.log"
-KESTRA_URL="http://localhost:8080"
-FLOW_NAMESPACE="indexing"
-FLOW_ID="index-pdfspipeline"
+# Paths
+WORKFLOW_FILE="./PDFIndexer/pdf_ingest_workflow.yaml"
+DOCKER_COMPOSE_FILE="./docker-compose.yml"
+KESTRA_HOST="http://localhost:8080"
+KESTRA_CONTAINER_NAME="kestra"
+WORKFLOW_PATH_IN_CONTAINER="/app/pdfindexer/pdf_ingest_workflow.yaml"
+WORKFLOW_ID="pdf.indexer.pdf_ingest_workflow"
 
-# Define environment variables for Terraform
-export TF_VAR_DIR="$BASE_DIR"
-export TF_VAR_GOOGLE_CREDENTIALS_BUCKET="$BASE_DIR/keys/storage.json"
-export TF_VAR_GOOGLE_CREDENTIALS_PATH="$BASE_DIR/keys/storage.json"
-export TF_VAR_KESTRA_REPO_PATH="$BASE_DIR/kestra_workflows"
-export TF_VAR_TERRAFORM="$BASE_DIR/terraform"
-export TF_VAR_PYTHON_SCRIPT_PATH="$BASE_DIR/python"
-export GOOGLE_APPLICATION_CREDENTIALS=$TF_VAR_GOOGLE_CREDENTIALS_PATH
+echo "🛠️ Starting Kestra with Docker Compose..."
+docker-compose -f "$DOCKER_COMPOSE_FILE" up -d
 
-# Ensure Terraform directory exists
-if [ ! -d "$TF_VAR_TERRAFORM" ]; then
-  echo "ERROR: Terraform directory not found: $TF_VAR_TERRAFORM"
-  exit 1
-fi
+echo "⏳ Waiting for Kestra to be ready..."
+until curl --silent --fail $KESTRA_HOST > /dev/null; do
+  printf '.'
+  sleep 2
+done
+echo -e "\n✅ Kestra is ready."
 
-# Change to Terraform directory
-cd "$TF_VAR_TERRAFORM"
+echo "📥 Registering workflow..."
+docker exec -i kestra \
+  curl -X POST http://localhost:8080/api/v1/flows/import \
+    -H "Content-Type: application/x-yaml" \
+    --data-binary @/app/pdfindexer/pdf_ingest_workflow.yaml
 
-## Initialize and apply Terraform
-#echo "Initializing Terraform..."
-#terraform init
-#terraform apply -auto-approve
+echo "🚀 Executing workflow: $WORKFLOW_ID..."
+docker exec kestra \
+  curl -X POST http://localhost:8080/api/v1/executions/pdf.indexer/pdf_ingest_workflow \
+    -F ""
 
-# Extract the GCS bucket name dynamically
-BUCKET_NAME=$(terraform output -raw pdf_bucket_name)
-
-# Check if bucket name was retrieved
-if [ "$BUCKET_NAME" = "ERROR" ] || [ -z "$BUCKET_NAME" ]; then
-  echo "ERROR: Failed to get bucket name from Terraform!"
-  exit 1
-fi
-
-echo $BUCKET_NAME
-
-export PDF_BUCKET_NAME=$BUCKET_NAME
-
-source /home/lebjones/PDFIndexer/.venv/bin/activate
-
-cd /home/lebjones/PDFIndexer/python
-
-pip install -r requirements.txt
-
-python -m spacy download en_core_web_sm
-
-python load_pdfs.py
-
-python indexer.py
-
-deactivate
+echo "🎉 Workflow execution complete!"

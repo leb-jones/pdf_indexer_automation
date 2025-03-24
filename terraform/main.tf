@@ -5,23 +5,16 @@ terraform {
       source  = "kreuzwerker/docker"
       version = "~> 2.0"
     }
-    kestra = {
-      source  = "kestra-io/kestra"
-      version = "~> 0.11.0"
-    }
   }
 }
 
 # 🚀 Terraform Variables
-variable "GOOGLE_CREDENTIALS_BUCKET" {}
 variable "GOOGLE_CREDENTIALS_PATH" {}
-variable "KESTRA_REPO_PATH" {}
 variable "DIR" {}
-variable "PYTHON_SCRIPT_PATH" {}
 
 # 🚀 Google Cloud Provider Configuration
 provider "google" {
-  credentials = file(var.GOOGLE_CREDENTIALS_BUCKET)
+  credentials = file(var.GOOGLE_CREDENTIALS_PATH)
   project     = "books-450100"
   region      = "us-central1"
 }

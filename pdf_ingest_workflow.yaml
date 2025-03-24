@@ -1,0 +1,25 @@
+id: pdf_ingest_workflow
+namespace: pdf.indexer
+
+tasks:
+  - id: load-pdfs
+    type: io.kestra.plugin.scripts.docker.Execute
+    image: pdf-indexer:latest
+    inputFiles:
+      /app/storage.json: |
+        {{ secret("gcs_credentials_json") }}
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/storage.json
+    commands:
+      - load_pdfs.py
+
+  - id: index-pdfs
+    type: io.kestra.plugin.scripts.docker.Execute
+    image: pdf-indexer:latest
+    inputFiles:
+      /app/storage.json: |
+        {{ secret("gcs_credentials_json") }}
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/storage.json
+    commands:
+      - indexer.py

@@ -1,0 +1,21 @@
+kestra:
+  server:
+    port: 8080
+  repository:
+    type: postgres
+  database:
+    type: jdbc
+    jdbc:
+      url: jdbc:postgresql://postgres:5432/kestra
+      driverClassName: org.postgresql.Driver
+      username: kestra
+      password: kestra
+  queue:
+    type: jdbc
+  storage:
+    type: local
+    local:
+      basePath: /app/storage
+  secrets:
+    gcs_credentials_json: ${GCS_CREDENTIALS}
+
