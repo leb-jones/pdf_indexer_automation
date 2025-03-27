@@ -6,29 +6,34 @@ volumes:
 
 services:
   postgres:
-    image: postgres:15
-    container_name: postgres
+    image: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: kestra
       POSTGRES_USER: kestra
-      POSTGRES_PASSWORD: kestra
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: k3str4
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kestra"]
-      interval: 5s
-      timeout: 5s
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 30s
+      timeout: 10s
       retries: 10
 
   kestra:
-    build: .
+    image: kestra/kestra:v0.20.7
+    pull_policy: always
+    user: "root"
+    command: server standalone
     container_name: kestra
-    depends_on:
-      postgres:
-        condition: service_started
-    command: server standalone --config /app/config/application.yml
-    ports:
-      - "8080:8080"
+    volumes:
+      - kestra-data:/app/storage
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/kestra-wd:/tmp/kestra-wd
+      - /home/lebjones/Media/Books:/app/media
+      - /home/lebjones/PDFIndexer/kestra/application.yml:/app/config/application.yml
+      - /home/lebjones/PDFIndexer:/app/storage
+    env_file:
+      - ./.env
     environment:
       KESTRA_CONFIGURATION: |
         datasources:
@@ -36,7 +41,7 @@ services:
             url: jdbc:postgresql://postgres:5432/kestra
             driverClassName: org.postgresql.Driver
             username: kestra
-            password: kestra
+            password: k3str4
         kestra:
           server:
             basicAuth:
@@ -55,12 +60,10 @@ services:
             tmpDir:
               path: /tmp/kestra-wd/tmp
           url: http://localhost:8080/
-    volumes:
-      - kestra-data:/app/storage
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /tmp/kestra-wd:/tmp/kestra-wd
-      - /home/lebjones/PDFIndexer/kestra/application.yml:/app/config/application.yml
-      - /home/lebjones/PDFIndexer:/app/pdfindexer
-    env_file:
-      - .env
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_started
 

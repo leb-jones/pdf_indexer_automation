@@ -16,6 +16,8 @@ kestra:
     type: local
     local:
       basePath: /app/storage
+  plugins:
+    - io.kestra.plugin.scripts.docker
   secrets:
     gcs_credentials_json: ${GCS_CREDENTIALS}
 

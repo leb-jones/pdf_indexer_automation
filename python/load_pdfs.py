@@ -3,7 +3,7 @@ import sys
 from google.cloud import storage
 
 # 🚀 Configuration
-LOCAL_PDF_DIRECTORY = "/home/lebjones/Media/Books"  # Local directory containing PDFs
+LOCAL_PDF_DIRECTORY = "/app/media/Books"  # Local directory containing PDFs
 GCS_DESTINATION_PREFIX = "pdfs/"  # Folder inside the bucket (optional)
 
 # 🚀 Ensure Google Cloud credentials are set

@@ -1,0 +1,32 @@
+id: pdf_ingest_workflow
+namespace: pdfindexer
+labels:
+  type: ingestion
+tasks:
+  - id: load-pdfs
+    type: io.kestra.plugin.scripts.python.Commands
+    beforeCommands:         
+      - python -m venv venv          
+      - . venv/bin/activate          
+      - pip install -r /app/storage/python/requirements.txt
+    commands:
+      - python /app/storage/python/load_pdfs.py
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/storage/keys/storage.json
+      PDF_BUCKET_NAME: "indexing-pdf-storage-644edf7f"
+  - id: index
+    type: io.kestra.plugin.scripts.python.Commands
+    beforeCommands:         
+      - python -m venv venv          
+      - . venv/bin/activate          
+      - pip install -r /app/storage/python/requirements.txt
+      - python -m spacy download en_core_web_sm
+    commands:
+      - python /app/storage/python/indexer.py
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/storage/keys/storage.json
+      PDF_BUCKET_NAME: "indexing-pdf-storage-644edf7f"
