@@ -30,3 +30,12 @@ tasks:
     env:
       GOOGLE_APPLICATION_CREDENTIALS: /app/storage/keys/storage.json
       PDF_BUCKET_NAME: "indexing-pdf-storage-644edf7f"
+  - id: trigger_dbt_job
+    type: io.kestra.plugin.core.http.Request
+    uri: "https://cloud.getdbt.com/api/v2/accounts/{{ secrets.dbt_account_id }}/jobs/{{ secrets.dbt_job_id }}/run/"
+    method: POST
+    headers:
+      Authorization: "Token {{ secrets.dbt_token }}"
+      Content-Type: "application/json"
+    content: "{}"
+    store: true
