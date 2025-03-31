@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: staging
+    database: books-450100
+    schema: indexing_dataset
+
+    tables:
+      - name: dim_book
+      - name: dim_word
+      - name: index_fact

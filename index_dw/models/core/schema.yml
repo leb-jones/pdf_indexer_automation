@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: dim_book
+
+  - name: dim_word
+
+  - name: index_fact
+
+  - name: fact_index
+    columns:
+      - name: Word
+      - name: Book
+      - name: PageNumber
