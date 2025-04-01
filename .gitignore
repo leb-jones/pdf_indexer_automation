@@ -3,6 +3,7 @@ keys/*.json
 *.key
 *.pem
 *.p12
+.env
 
 #Ignore Terraform state & logs
 terraform/.terraform/
